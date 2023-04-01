@@ -16,6 +16,8 @@ class PosEmbedding(nn.Module):
 
     def forward(self, x):
         """
+        # xx where B -> number of samples in a ray batch?
+        # xx each input 3D coordinate gets turned into a 3 (input coord dim) * 2 (num of functions, sin and cos) * N_freqs + 3 (original coords) D vector
         Inputs:
             x: (B, 3)
 
@@ -50,6 +52,7 @@ class NeRF(nn.Module):
         self.in_channels_a = in_channels_a if encode_appearance else 0
         self.encode_random = False if typ=='coarse' else encode_random
 
+        # xx see Implementation Details (section 5.1)
         # xyz encoding layers
         for i in range(D):
             if i == 0:
@@ -66,6 +69,8 @@ class NeRF(nn.Module):
         self.static_sigma = nn.Sequential(nn.Linear(W, 1), nn.Softplus())
 
         # direction encoding layers
+        # xx appearance embedding is inputted here! 
+        # xx outdim = W/2 -> 256/2 -> 128 (see 5.1)
         self.dir_encoding = nn.Sequential(
                         nn.Linear(W+in_channels_dir+self.in_channels_a, W//2), nn.ReLU(True))
         self.static_rgb = nn.Sequential(nn.Linear(W//2, 3), nn.Sigmoid())
@@ -99,6 +104,7 @@ class NeRF(nn.Module):
             return static_sigma
 
         xyz_encoding_final = self.xyz_encoding_final(xyz_)
+        # xx remember that input_dir_a is positional_encoded direction vector + appearance embedding
         dir_encoding_input = torch.cat([xyz_encoding_final, input_dir_a], 1)
         dir_encoding = self.dir_encoding(dir_encoding_input)
         static_rgb = self.static_rgb(dir_encoding) # (B, 3)

@@ -48,15 +48,21 @@ class NeRFSystem(LightningModule):
                            'dir': self.embedding_dir}
 
         if hparams.encode_a:
+            # xx N_a -> dimension of appearance embedding vector (48 by default, as specified by paper (section 5.1))
+            # xx N_vocab -> number of input images
             self.enc_a = E_attr(3, hparams.N_a)
             self.models_to_train += [self.enc_a]
             self.embedding_a_list = [None] * hparams.N_vocab
 
+        # xx coarse nerf only used for importance sampling, no appearance will be trained
+        # xx 6,3 correspond with parameters of the positional encoding function (see PosEmbedding)
         self.nerf_coarse = NeRF('coarse',
-                                in_channels_xyz=6*hparams.N_emb_xyz+3,
+                                in_channels_xyz=6*hparams.N_emb_xyz+3, 
                                 in_channels_dir=6*hparams.N_emb_dir+3)
         self.models = {'coarse': self.nerf_coarse}
 
+        # xx fine nerf will train appearance (if encode_a is 'True')
+        # xx input layer of NeRF has to account for extra dimensions of appearance embedding, which will be concatenated with the positional input
         if hparams.N_importance > 0:
             self.nerf_fine = NeRF('fine',
                                   in_channels_xyz=6*hparams.N_emb_xyz+3,
@@ -96,6 +102,7 @@ class NeRFSystem(LightningModule):
                     kwargs['a_embedded_random'] = self.embedding_a_list[random.choice(idexlist)]
 
         """Do batched inference on rays using chunk."""
+        # xx B -> number of rays per batch
         B = rays.shape[0]
         for i in range(0, B, self.hparams.chunk):
             rendered_ray_chunks = \
@@ -175,6 +182,7 @@ class NeRFSystem(LightningModule):
                           batch_size=1, # validate one image (H*W rays) at a time
                           pin_memory=True)
     
+
     def training_step(self, batch, batch_nb):
         rays, ts = batch['rays'].squeeze(), batch['ts'].squeeze()
         rgbs = batch['rgbs'].squeeze()
@@ -189,6 +197,7 @@ class NeRFSystem(LightningModule):
         W = int(sqrt(rgbs.size(0)))
 
         test_blender = False
+        # this calls self.forward
         results = self(rays, ts, whole_img, W, H, rgb_idx, uv_sample, test_blender)
         loss_d, AnnealingWeight = self.loss(results, rgbs, self.hparams, self.global_step)
         loss = sum(l for l in loss_d.values())
